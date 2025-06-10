@@ -9,7 +9,7 @@ API_KEY = "AIzaSyDTzn0avrKlIf8ch3B6ICc83wmaHJ66xu4"
 
 # IMPORTANT: Replace this with the full path to the image you want to analyze.
 # For example: "C:/Users/YourUser/Pictures/fruits.jpg" or "/home/user/images/fruit_basket.png"
-IMAGE_PATH = "image.png"
+IMAGE_PATH = "a-lot-of-fruits.png"
 
 # --- Main Script ---
 
