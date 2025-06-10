@@ -1,6 +1,7 @@
 import base64
 import requests
 import os
+import json
 
 # --- Configuration ---
 # IMPORTANT: Replace "abc" with your actual Google AI Studio API key.
@@ -9,7 +10,7 @@ API_KEY = "AIzaSyDTzn0avrKlIf8ch3B6ICc83wmaHJ66xu4"
 
 # IMPORTANT: Replace this with the full path to the image you want to analyze.
 # For example: "C:/Users/YourUser/Pictures/fruits.jpg" or "/home/user/images/fruit_basket.png"
-IMAGE_PATH = "a-lot-of-fruits.png"
+IMAGE_PATH = "input.png"
 
 # --- Main Script ---
 
@@ -35,20 +36,35 @@ def encode_image_to_base64(filepath):
 
 def analyze_image_with_gemini(api_key, image_base64, mime_type):
     """
-    Sends the image to the Gemini API and returns the identified fruits.
+    Sends the image to the Gemini API and returns a detailed analysis
+    of the fruits, including variety, count, and ripeness.
     """
     if not api_key or api_key == "abc":
         print("Error: API Key is not set.")
         print("Please replace 'abc' with your actual Gemini API key.")
         return None
 
-    # Updated API URL to use a current and recommended model (gemini-1.5-flash-latest).
-    # This resolves the '404 Not Found' error from the old model endpoint.
     api_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key={api_key}"
 
-    # This is the prompt we send to the model.
-    # We ask it to identify the fruits and return a simple, comma-separated list.
-    prompt_text = "Identify all the fruits in this image. Please provide the response as a simple, comma-separated list. For example: Apple, Banana, Orange"
+    # Updated prompt to use 'variety' for the main fruit type (e.g., Apple)
+    # and to request a JSON output with the specified keys.
+    prompt_text = """
+    Analyze the image and identify each type of fruit. For each fruit type, provide:
+    1. The variety of the fruit (e.g., 'Apple', 'Banana', 'Orange').
+    2. A count of how many are visible.
+    3. An assessment of its ripeness ('unripe', 'ripe', or 'overripe').
+
+    Please provide the response as a JSON object with a single key "fruits" which contains a list of objects.
+    Each object in the list should have the following keys: "variety", "count", "ripeness".
+    
+    Example response format:
+    {
+      "fruits": [
+        {"variety": "Apple", "count": 2, "ripeness": "ripe"},
+        {"variety": "Banana", "count": 5, "ripeness": "unripe"}
+      ]
+    }
+    """
 
     payload = {
         "contents": [
@@ -57,42 +73,50 @@ def analyze_image_with_gemini(api_key, image_base64, mime_type):
                     {"text": prompt_text},
                     {
                         "inline_data": {
-                            "mime_type": mime_type, # Use the dynamically detected MIME type
+                            "mime_type": mime_type,
                             "data": image_base64
                         }
                     }
                 ]
             }
-        ]
+        ],
+        # Added generationConfig to explicitly request JSON output.
+        "generationConfig": {
+          "responseMimeType": "application/json"
+        }
     }
 
     headers = {
         "Content-Type": "application/json"
     }
 
-    print("Sending image to Gemini for analysis...")
+    print("Sending image to Gemini for detailed analysis...")
     try:
         response = requests.post(api_url, json=payload, headers=headers)
-        response.raise_for_status()  # This will raise an HTTPError for bad responses (4xx or 5xx)
+        response.raise_for_status()
         
         response_json = response.json()
 
-        # Navigate through the JSON response to get the text content
         if (response_json.get("candidates") and
-                len(response_json["candidates"]) > 0 and
                 response_json["candidates"][0].get("content") and
-                response_json["candidates"][0]["content"].get("parts") and
-                len(response_json["candidates"][0]["content"]["parts"]) > 0):
+                response_json["candidates"][0]["content"].get("parts")):
             
-            text_response = response_json["candidates"][0]["content"]["parts"][0]["text"]
-            return text_response.strip()
+            # The response is now expected to be structured JSON text.
+            json_text = response_json["candidates"][0]["content"]["parts"][0]["text"]
+            # We parse the JSON string into a Python dictionary.
+            data = json.loads(json_text)
+            return data.get("fruits") # Return the list of fruit objects
         else:
-            print("Error: Could not find the text part in the API response.")
+            print("Error: Could not find the expected content part in the API response.")
             print("Full response:", response_json)
             return None
 
     except requests.exceptions.RequestException as e:
         print(f"An error occurred while calling the Gemini API: {e}")
+        return None
+    except json.JSONDecodeError:
+        print("Error: Failed to decode JSON from the API response.")
+        print("Received response:", response.text)
         return None
     except Exception as e:
         print(f"An unexpected error occurred: {e}")
@@ -100,35 +124,29 @@ def analyze_image_with_gemini(api_key, image_base64, mime_type):
 
 def main():
     """Main function to run the fruit identification process."""
-    print("--- Fruit Identifier ---")
+    print("--- Advanced Fruit Analyzer ---")
 
-    # Check if the image path is set
     if IMAGE_PATH == "path/to/your/fruit_image.jpg" or not os.path.exists(IMAGE_PATH):
         print("Error: Please update the 'IMAGE_PATH' variable with a valid path to your image file.")
         return
 
-    # 1. Get the image's MIME type
     mime_type = get_image_mime_type(IMAGE_PATH)
-
-    # 2. Encode the image
     image_data = encode_image_to_base64(IMAGE_PATH)
     if not image_data:
-        return # Stop execution if image encoding failed
+        return
 
-    # 3. Analyze with Gemini
-    fruits_list = analyze_image_with_gemini(API_KEY, image_data, mime_type)
+    # Get the detailed list of fruits from the analysis.
+    detailed_fruits_list = analyze_image_with_gemini(API_KEY, image_data, mime_type)
 
-    # 4. Display the result
-    if fruits_list:
-        print("\n--- Analysis Complete ---")
-        print("Gemini identified the following fruits in the image:")
-        
-        # Split the comma-separated string into a list and print each fruit
-        fruits = [fruit.strip() for fruit in fruits_list.split(',')]
-        for fruit in fruits:
-            print(f"- {fruit}")
+    # Display the results as a JSON object, as requested.
+    if detailed_fruits_list:
+        print("\n--- Detailed Fruit Analysis Complete ---")
+        # Create the final JSON object to be printed
+        output_json = {"fruits": detailed_fruits_list}
+        # Print the JSON object with indentation for readability
+        print(json.dumps(output_json, indent=2))
     else:
-        print("\nCould not identify any fruits. Please check the error messages above.")
+        print("\nCould not identify any fruits or failed to get details. Please check the error messages above.")
 
 if __name__ == "__main__":
     main()
