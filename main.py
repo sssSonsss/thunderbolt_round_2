@@ -5,8 +5,9 @@ import base64
 import requests
 import os
 import json
+from datetime import datetime
 
-API_KEY = "AIzaSyDTzn0avrKlIf8ch3B6ICc83wmaHJ66xu4"  # Replace this securely in production
+API_KEY = "AIzaSyDTzn0avrKlIf8ch3B6ICc83wmaHJ66xu4"  # Replace with your actual key
 
 def get_image_mime_type(filepath):
     if filepath.lower().endswith('.png'):
@@ -61,6 +62,45 @@ def analyze_image(api_key, image_base64, mime_type):
         messagebox.showerror("API Error", f"Failed to analyze image.\n\n{e}")
         return None
 
+def transform_fruit_data(fruits_list):
+    grouped = {}
+    total_fruits = 0
+
+    for fruit in fruits_list:
+        variety = fruit["variety"].lower()
+        ripeness = fruit["ripeness"].lower()
+        count = fruit["count"]
+        total_fruits += count
+
+        if variety not in grouped:
+            grouped[variety] = {
+                "unripe": 0,
+                "ripe": 0,
+                "overripe": 0
+            }
+
+        if ripeness in grouped[variety]:
+            grouped[variety][ripeness] += count
+        else:
+            grouped[variety][ripeness] = count
+
+    inventory = []
+    for name, ripeness_data in grouped.items():
+        total = sum(ripeness_data.values())
+        inventory.append({
+            "fruit": name,
+            "ripeness_summary": ripeness_data,
+            "total": total
+        })
+
+    result = {
+        "inventory": inventory,
+        "total_fruits": total_fruits,
+        "timestamp": datetime.utcnow().isoformat() + "Z"
+    }
+
+    return result
+
 class FruitAnalyzerApp:
     def __init__(self, root):
         self.root = root
@@ -100,8 +140,9 @@ class FruitAnalyzerApp:
             return
         results = analyze_image(API_KEY, image_data, mime_type)
         if results:
+            transformed = transform_fruit_data(results["fruits"])
             self.result_text.delete("1.0", tk.END)
-            self.result_text.insert(tk.END, json.dumps(results, indent=2))
+            self.result_text.insert(tk.END, json.dumps(transformed, indent=2))
 
 if __name__ == "__main__":
     root = tk.Tk()
